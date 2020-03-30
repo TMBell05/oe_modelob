@@ -92,8 +92,8 @@ print("Reading in the VIP variables...")
 data_source = findVIPVariable('data_source', vip)
 lat = findVIPVariable("aeri_lat", vip)
 lon = findVIPVariable("aeri_lon", vip)
-temporal_mesh_size = findVIPVariable('temporal_mesh_size', vip)
-spatial_mesh_size = findVIPVariable('spatial_mesh_size', vip)
+temporal_mesh_size = int(findVIPVariable('temporal_mesh_size', vip))
+spatial_mesh_size = int(findVIPVariable('spatial_mesh_size', vip))
 
 ### Select the data source to generate the observation files.
 if data_source == 1:

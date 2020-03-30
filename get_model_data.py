@@ -138,7 +138,7 @@ def getNOMADSRAPProfiles(yyyymmddhh, aeri_lat, aeri_lon, size):
     aeri_lon = float(aeri_lon)
     aeri_lat = float(aeri_lat)     
     size = int(size)
-    print rap_path
+
     # Ensure that the file found can be opened up.
     try:
         d = Dataset(rap_path)
@@ -173,8 +173,7 @@ def getNOMADSRAPProfiles(yyyymmddhh, aeri_lat, aeri_lon, size):
     #center_rh = d.variables['rhp'][0,idy,idx,:]
     #hght = d.variables['heightgpp'][0,idy-size:idy+size,idx-size:idx+size,:]
     #center_hght = d.variables['heightgpp'][0,idy,idx,:]
-    print d
-    
+
     pres = d['pressure'][:]
     temp =  d.variables['Temperature'][0,:,idy-size:idy+size,idx-size:idx+size]
     center_temp =  d.variables['Temperature'][0,:,idy,idx]
@@ -631,7 +630,7 @@ def getMotherlodeProfiles(yyyymmddhh, begin_window, end_window, aeri_lat, aeri_l
     
     recent_rap_path = 'http://thredds.ucar.edu/thredds/dodsC/grib/NCEP/RAP/CONUS_13km/RR_CONUS_13km_' + \
         yyyymmddhh[:8] + '_' + yyyymmddhh[8:10] + '00.grib2/GC'
-    print recent_rap_path
+
     try:
         d = Dataset(recent_rap_path)
         print("Found 13 km RAP data for this date on the Motherlode UCAR server.")
@@ -784,7 +783,7 @@ def getNCEIProfiles(yyyymmddhh, aeri_lat, aeri_lon, size):
 
     recent_rap_path = 'http://ncei.noaa.gov/thredds/dodsC/model-rap130anl/%Y%m/%Y%m%d/rap_130_%Y%m%d_%H%M_000.grb2'
     recent_rap_path = yyyymmddhh.strftime(recent_rap_path)
-    print recent_rap_path
+
     try:
         d = Dataset(recent_rap_path)
         print("Found 13 km RAP data for this date on the NCEI server.")
@@ -806,8 +805,6 @@ def getNCEIProfiles(yyyymmddhh, aeri_lat, aeri_lon, size):
     size = int(size) 
     # Find the indices for the nearest grid point to the AERI location
     idy, idx = utils.find_index_of_nearest_xy(lon, lat, aeri_lon, aeri_lat)
-
-    print idy, idx, size
 
     # Read in the 13 km RAP data for parsing.
     pres = d.variables['isobaric'][:] #Pascals
@@ -1403,6 +1400,11 @@ def getNCEIModelObs(begin_dt, end_dt, temporal_mesh_size, spatial_mesh_size, aer
     dists = np.empty(num_times+1, dtype=dict)
     points = np.empty(num_times+1, dtype=dict)
     dts = np.empty(num_times+1, dtype=object)
+
+    # Make sure the variables are the correct datatype
+    if type(temporal_mesh_size) != int or type(spatial_mesh_size) != int:
+        temporal_mesh_size = int(temporal_mesh_size)
+        spatial_mesh_size = int(spatial_mesh_size)
     
     # Begin looping over the time frame the observation files encompass.
     # Save the data into the numpy arrays.
@@ -1462,8 +1464,6 @@ def getNCEIModelObs(begin_dt, end_dt, temporal_mesh_size, spatial_mesh_size, aer
         
         # Try to save the interpolated temperature, water vapor mixing ratio, and pressure profiles
         try:
-            print len(points[i]['hght'])
-            print len(points[i]['temp'])
             temperature[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['temp'])
             wvmr[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['wvmr'])
             pressure[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['pres'])
