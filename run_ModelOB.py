@@ -106,6 +106,8 @@ elif data_source == 3:
     print("This datastream contains more recent data and is recommended for realtime AERIoe runs.")
 elif data_source == 4:
     print("VIP file says to generate model observation files using ECMWF model files.")
+elif data_source == 5:
+    print("Using NCEI data source")
 else:
     print("Invalid value for \"data_source\" variable in the VIP file, aborting program.")
     sys.exit()
@@ -139,6 +141,10 @@ elif data_source == 4:
     output = gmp.getECMWFModelObs(ecmwf_model_dir, begin_dt, end_dt, temporal_mesh_size, spatial_mesh_size, lon, lat)
     output['arm_model_dir'] = ecmwf_model_dir
     output['model_src'] = 'ICECAPS ECMWF'
+elif data_source == 5:
+    output = gmp.getNCEIModelObs(begin_dt, end_dt, temporal_mesh_size, spatial_mesh_size, lon, lat)
+    output['arm_model_dir'] = 'n/a'
+    output['model_src'] = 'UCAR Thredds' 
 
 output['spatial_mesh_size'] = spatial_mesh_size
 output['temporal_mesh_size'] = temporal_mesh_size

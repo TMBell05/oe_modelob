@@ -138,7 +138,7 @@ def getNOMADSRAPProfiles(yyyymmddhh, aeri_lat, aeri_lon, size):
     aeri_lon = float(aeri_lon)
     aeri_lat = float(aeri_lat)     
     size = int(size)
-
+    print rap_path
     # Ensure that the file found can be opened up.
     try:
         d = Dataset(rap_path)
@@ -173,8 +173,9 @@ def getNOMADSRAPProfiles(yyyymmddhh, aeri_lat, aeri_lon, size):
     #center_rh = d.variables['rhp'][0,idy,idx,:]
     #hght = d.variables['heightgpp'][0,idy-size:idy+size,idx-size:idx+size,:]
     #center_hght = d.variables['heightgpp'][0,idy,idx,:]
+    print d
     
-    pres = d.variables['pressure'][:]
+    pres = d['pressure'][:]
     temp =  d.variables['Temperature'][0,:,idy-size:idy+size,idx-size:idx+size]
     center_temp =  d.variables['Temperature'][0,:,idy,idx]
     rh = d.variables['Relative_humidity'][0,:,idy-size:idy+size,idx-size:idx+size]
@@ -590,7 +591,7 @@ def getECMWFProfiles(data_path, yyyymmdd, hh,  aeri_lon, aeri_lat, size):
     
     return distribution_profiles, point_profile
 
-def getMotherlodeProfiles(yyyymmddhh, begin_window, end_window, aeri_lat, aeri_lon, size):
+def getMotherlodeProfiles(yyyymmddhh, begin_window, end_window, aeri_lat, aeri_lon, sizee):
     """
     This function is used to parse through RAP data located on the THREDDS Motherlode server
     
@@ -627,8 +628,10 @@ def getMotherlodeProfiles(yyyymmddhh, begin_window, end_window, aeri_lat, aeri_l
     distribution_profiles - a dictionary containing the T/Q/Z/P profiles around the point profile
     point_profile -  a dictionary containing the T/Q/Z/P profiles at the center point (closest to the AERI)
     """
+    
     recent_rap_path = 'http://thredds.ucar.edu/thredds/dodsC/grib/NCEP/RAP/CONUS_13km/RR_CONUS_13km_' + \
         yyyymmddhh[:8] + '_' + yyyymmddhh[8:10] + '00.grib2/GC'
+    print recent_rap_path
     try:
         d = Dataset(recent_rap_path)
         print("Found 13 km RAP data for this date on the Motherlode UCAR server.")
@@ -716,6 +719,162 @@ def getMotherlodeProfiles(yyyymmddhh, begin_window, end_window, aeri_lat, aeri_l
             temps.append(new_temp)
             press.append(new_pres)
             hghts.append(new_hght)
+            
+    # Store these arrays into the distribution_profiles dictionary
+    distribution_profiles = {}
+    distribution_profiles['temp'] = np.asarray(temps)
+    distribution_profiles['wvmr'] = np.asarray(mxrs)
+    distribution_profiles['pres'] = np.asarray(press)
+    distribution_profiles['hght'] = np.asarray(hghts)
+    distribution_profiles['path_to_data'] = recent_rap_path
+    
+    point_profile = {}
+    point_profile['temp'] = center_temp
+    point_profile['wvmr'] = center_q
+    point_profile['pres'] = center_pres
+    point_profile['hght'] = center_hght
+    point_profile['hght_wnd'] = center_hght_wnd
+    point_profile['u'] = u
+    point_profile['v'] = v
+    point_profile['lat'] = ll.variables['lat'][idy, idx]
+    point_profile['lon'] = ll.variables['lon'][idy, idx]
+    
+    # Close the terrain dataset.
+    ll.close()
+    
+    return distribution_profiles, point_profile
+
+def getNCEIProfiles(yyyymmddhh, aeri_lat, aeri_lon, size):
+    """
+    This function is used to parse through RAP data located on the NCEI THREDDS server
+    
+    Using the yyyymmddhh string, this function reads in the RAP data for that
+    time from the NCEI THREDDS.  Using the aeri_lat, aeri_lon grids and an
+    netCDF file of the surface terrain height @ 13 km and the time_window variable,
+    this code will parse out RAP profiles from within this spatial and temporal mesh/data cube.
+    This data contains both the analysis (at index=0) and the forecast data.  Analysis data is only
+    included if time_window = 0.  If forecast data is to be used, time_window needs to be greater than 1.
+    
+    This parsing creates four arrays: temps, mxrs, press, and hghts
+    These arrays are 2-D in the sense that the first index is the profile and the second index is 
+    the vertical grid index of the thermodynamic profile.
+    
+    The parsing also returns the thermodynamic profile from the grid point closest to the AERI location.
+    
+    This function and methodology works best when we want to run AERIoe in realtime mode, as
+    the RAP forecast and analysis data has a 2-week lifetime on the Motherlode server.
+    
+    TODO: - Include Unidata Siphon compatability (might work better!)
+          - Dump out the wind profile (u,v) information from this grid point too.
+    
+    Inputs
+    ------
+    yyyymmddhh - a string showing the year, month, date, and hour for the data we want
+    begin_window - beginning index for the temporal window
+    end_window - ending index for the temporal window
+    aeri_lat - location of the AERI (latitude)
+    aeri_lon - location of the AERI (longitude)
+    size - number of grid points for the spatial box to calculate the profile uncertainity.
+
+    Returns
+    -------
+    distribution_profiles - a dictionary containing the T/Q/Z/P profiles around the point profile
+    point_profile -  a dictionary containing the T/Q/Z/P profiles at the center point (closest to the AERI)
+    """
+
+    recent_rap_path = 'http://ncei.noaa.gov/thredds/dodsC/model-rap130anl/%Y%m/%Y%m%d/rap_130_%Y%m%d_%H%M_000.grb2'
+    recent_rap_path = yyyymmddhh.strftime(recent_rap_path)
+    print recent_rap_path
+    try:
+        d = Dataset(recent_rap_path)
+        print("Found 13 km RAP data for this date on the NCEI server.")
+        model_name = "RAP13km"
+        path = recent_rap_path
+    except:
+        print("No RAP data found for this date on the NCEI server.")
+        print("Data Path:", recent_rap_path)
+        return None, None
+    
+    # Read in the terrain data and the lat,lon grid for the 13 km RAP grid.
+    ll = Dataset('13km_latlon.nc')
+    lon = ll.variables['lon'][:]
+    lat = ll.variables['lat'][:]
+    
+    # Ensure that the aeri_lat, aeri_lon variables are floats.
+    aeri_lon = float(aeri_lon)
+    aeri_lat = float(aeri_lat)
+    size = int(size) 
+    # Find the indices for the nearest grid point to the AERI location
+    idy, idx = utils.find_index_of_nearest_xy(lon, lat, aeri_lon, aeri_lat)
+
+    print idy, idx, size
+
+    # Read in the 13 km RAP data for parsing.
+    pres = d.variables['isobaric'][:] #Pascals
+    temp =  d.variables['Temperature_isobaric'][0][:,idy-size:idy+size,idx-size:idx+size] # 
+    center_temp =  d.variables['Temperature_isobaric'][0][:,idy, idx] # 
+    rh = d.variables['Relative_humidity_isobaric'][0][:,idy-size:idy+size,idx-size:idx+size]
+    center_rh = d.variables['Relative_humidity_isobaric'][0][:,idy, idx]
+    hght = d.variables['Geopotential_height_isobaric'][0][:,idy-size:idy+size,idx-size:idx+size]
+    center_hght = d.variables['Geopotential_height_isobaric'][0][:,idy ,idx]
+    sfc_pres = d.variables['Pressure_surface'][0][idy-size:idy+size,idx-size:idx+size]  #Pascals
+    center_sfc_pres = d.variables['Pressure_surface'][0][idy, idx]  #Pascals
+    sfc_hght = ll.variables['Geopotential_height_surface'][idx-size:idx+size, idy-size:idy+size]
+    center_sfc_hght = ll.variables['Geopotential_height_surface'][idx, idy]
+    #sfc_hght = d.variables['Geopotential_height_surface'][0][idy-size:idy+size,idx-size:idx+size]
+    sfc_temp = d.variables['Temperature_height_above_ground'][0][0, idy-size:idy+size,idx-size:idx+size]
+    center_sfc_temp = d.variables['Temperature_height_above_ground'][0][0, idy, idx]
+    sfc_rh = d.variables['Relative_humidity_height_above_ground'][0][0, idy-size:idy+size,idx-size:idx+size]
+    center_sfc_rh = d.variables['Relative_humidity_height_above_ground'][0][0, idy, idx]
+    
+    u =  d.variables['u-component_of_wind_isobaric'][0][:,idy,idx] #
+    v =  d.variables['v-component_of_wind_isobaric'][0][:,idy,idx] # 
+    center_sfc_u = d.variables['u-component_of_wind_height_above_ground'][0][0, idy, idx]
+    center_sfc_v = d.variables['v-component_of_wind_height_above_ground'][0][0, idy, idx]
+    
+    hght_prof = center_hght[:]
+    idx_aboveground = np.where(pres < center_sfc_pres)[0]
+    
+    # Include wind profile data
+    center_hght_wnd = (np.hstack((center_sfc_hght+10, center_hght[idx_aboveground][::-1])) - center_sfc_hght+10)/1000.
+    center_u = np.hstack((center_sfc_u, u[idx_aboveground][::-1]))
+    center_v = np.hstack((center_sfc_v, v[idx_aboveground][::-1]))
+
+    # Merge the model profile data together to get the thermodynamic profile nearest to the AERI location.
+    center_hght = (np.hstack((center_sfc_hght+2, center_hght[idx_aboveground][::-1])) - center_sfc_hght+2)/1000.
+    center_temp = np.hstack((center_sfc_temp, center_temp[idx_aboveground][::-1]))
+    center_rh = np.hstack((center_sfc_rh, center_rh[idx_aboveground][::-1]))
+    center_pres = np.hstack((center_sfc_pres, pres[idx_aboveground][::-1]))
+    
+    center_q = utils.rh2q(center_temp, center_pres, center_rh/100.)*1000.
+    
+    # Close the 13 km RAP dataset.
+    d.close()
+
+    # Initalize the profile storage arrays.
+    mxrs = []
+    temps = []
+    press = []
+    hghts = []
+
+    
+    # Loop over the horizontal grid and pull out the vertical profiles at each grid point.
+    for index, x in np.ndenumerate(sfc_hght):
+        # Find the indicies that correspond to the elements of the vertical grid that are above ground.
+        idx_aboveground = np.where(sfc_hght[index] < hght[index[0], index[1],:])[0]
+        
+        # Merge the 2 meter AGL variables with the rest of the above ground profile.
+        new_hght = (np.hstack((sfc_hght[index]+2, hght[index[0], index[1], idx_aboveground])) - sfc_hght[index])/1000.
+        new_temp = np.hstack((sfc_temp[index], temp[index[0], index[1], idx_aboveground]))
+        new_rh = np.hstack((sfc_rh[index], rh[index[0], index[1], idx_aboveground]))
+        new_pres = np.hstack((sfc_pres[index], pres[idx_aboveground]))
+        new_q = utils.rh2q(new_temp, new_pres*100., new_rh/100.)*1000.
+        
+        # Append the full ground to top of model profile to storage arrays.
+        mxrs.append(new_q)
+        temps.append(new_temp)
+        press.append(new_pres)
+        hghts.append(new_hght)
             
     # Store these arrays into the distribution_profiles dictionary
     distribution_profiles = {}
@@ -1225,6 +1384,217 @@ def getRealtimeProfiles(begin_dt, end_dt, temporal_mesh_size, spatial_mesh_size,
    
     return output
 
+
+def getNCEIModelObs(begin_dt, end_dt, temporal_mesh_size, spatial_mesh_size, aeri_lon, aeri_lat):
+
+    print("This model sounding is spatially centered at: " + str(aeri_lat) + ',' + str(aeri_lon))
+    delta = timedelta(seconds=60*60) # Hour delta used to iterate throughout the files
+    
+    # Tell the user what the range of data the program will look for.
+    print("Will be searching for model netCDF files between: " + datetime.strftime(begin_dt, '%Y-%m-%d %H') + ' and ' + datetime.strftime(end_dt, '%Y-%m-%d %H'))
+    print("Gathering profiles within a " + str(2*spatial_mesh_size) + "x" + str(2*spatial_mesh_size) + " grid.")
+
+    # Determine the temporal bounds of the data we need to collect.
+    lower_bound_dt = begin_dt - timedelta(seconds=60*60*temporal_mesh_size)
+    upper_bound_dt = end_dt + timedelta(seconds=60*60*temporal_mesh_size)
+    
+    # Arrays to store dictionaries 
+    num_times = int((upper_bound_dt - lower_bound_dt).seconds * (1./3600.) + (upper_bound_dt - lower_bound_dt).days * 24)
+    dists = np.empty(num_times+1, dtype=dict)
+    points = np.empty(num_times+1, dtype=dict)
+    dts = np.empty(num_times+1, dtype=object)
+    
+    # Begin looping over the time frame the observation files encompass.
+    # Save the data into the numpy arrays.
+    cur_dt = lower_bound_dt
+    count = 0
+    paths = []
+    data_type = []
+    use_forecast = False
+    # Get all of the analysis profiles
+    while cur_dt <= upper_bound_dt :
+        print("\nGathering profiles from this date/time: " + datetime.strftime(cur_dt, '%Y%m%d %H UTC'))
+        dist, point = getNCEIProfiles(cur_dt, aeri_lat, aeri_lon, spatial_mesh_size)
+        if dist is None:
+            # This means that a file couldn't be found for this time.
+            # This means that we should break the loop because no data for this hour is available.
+            # This also means that we should use forecast data to fill in the distribution
+            print("Unable to find data for:", cur_dt)
+            use_forecast = True
+            break
+        print("Using analysis data for the time of:", datetime.strftime(cur_dt, '%Y-%m-%d %H UTC'))
+        data_type.append(1) # Means that this an analysis
+        paths.append(dist['path_to_data'])
+        dists[count] = dist
+        points[count] = point
+        dts[count] = cur_dt
+        cur_dt = cur_dt + delta
+        count = count + 1
+
+    # Check to see if any data was able to be found on the server for the date/time specified.
+    if len(dts) == 0:
+        print("\nThe program was unable to find any model data for both the timeframe and data source specified in the VIP file.")
+        print("Perhaps you should try a different data source?")
+        print("Aborting the program...no file will be created.")
+        print("FAILED.")
+        sys.exit()
+
+    # Filter out the array elements that were never filled with profile information.
+    idx_filter = [i for i, item in enumerate(points) if item is not None]
+    points = points[idx_filter]
+    dists = dists[idx_filter]
+
+    paths = ', '.join(paths)
+    
+    # Set up final data arrays to be saved to the file.
+    temperature = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    wvmr = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    pressure = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    temperature_sigma = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    wvmr_sigma = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    u = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    v = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    
+    output = {}
+    # Loop over the timeframe.
+    for i in np.arange(temporal_mesh_size, len(dts) - temporal_mesh_size, 1):
+        index_range = np.arange(i - temporal_mesh_size, i+temporal_mesh_size+1, 1)
+        
+        # Try to save the interpolated temperature, water vapor mixing ratio, and pressure profiles
+        try:
+            print len(points[i]['hght'])
+            print len(points[i]['temp'])
+            temperature[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['temp'])
+            wvmr[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['wvmr'])
+            pressure[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['pres'])
+            # u[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght_wnd'], points[i]['u'].squeeze(), left=np.ma.masked, right=np.ma.masked)
+            # v[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght_wnd'], points[i]['v'].squeeze(), left=np.ma.masked, right=np.ma.masked)
+        except Exception as e:
+            # If there's an issue with loading in the data for this time, then this exception will catch it.
+            # this will skip calculating the standard deviation too, because we won't need that.
+            print(e)
+            continue
+        
+        # Pull out the latitude and longitude point.
+        lat = points[i]['lat']
+        lon = points[i]['lon']
+        
+        temp_dist = []
+        wvmr_dist = []
+        # Loop over the temporal window we'll be using to calculate the standard deviation.
+        for j in index_range:
+            # Loop over the spatial distribution of profiles for time index j.
+            for k in range(len(dists[i]['temp'])):
+                # Interpolate the profiles and save to the array used in calculating the standard deviation.
+                temp_dist.append(np.interp(height_grid, dists[i]['hght'][k], dists[i]['temp'][k]))
+                wvmr_dist.append(np.interp(height_grid, dists[i]['hght'][k], dists[i]['wvmr'][k]))
+        # Calculate the standard deviation profiles for temperature and water vapor mixing ratio and save it.
+        temp_std = np.std(np.asarray(temp_dist), axis=0)
+        wvmr_std = np.std(np.asarray(wvmr_dist), axis=0)
+        temperature_sigma[i-temporal_mesh_size,:] = temp_std
+        wvmr_sigma[i-temporal_mesh_size,:] = wvmr_std
+    
+    wdir, wspd = comp2vec(u, v)
+    output['pressure'] = np.ma.masked_where(pressure == 0, pressure)
+    output['temperature'] = np.ma.masked_where(np.ma.getmask(output['pressure']), temperature)
+    output['wvmr'] = np.ma.masked_where(np.ma.getmask(output['pressure']), wvmr)
+    output['temperature_sigma'] = np.ma.masked_where(np.ma.getmask(output['pressure']), temperature_sigma)
+    output['wvmr_sigma'] = np.ma.masked_where(np.ma.getmask(output['pressure']), wvmr_sigma)
+    # output['wdir'] = np.ma.masked_invalid(wdir)
+    # output['wspd'] = np.ma.masked_invalid(wspd)
+    output['height'] = height_grid
+    output['paths_to_data'] = paths
+    output['gridpoint_lat'] = lat
+    output['gridpoint_lon'] = lon
+    output['data_type'] = np.ones(len(temperature))
+    output['dts'] = dts[temporal_mesh_size:len(dts)-temporal_mesh_size]
+   
+    return output
+
+
+
+    '''
+    paths = []
+    while cur_dt <= upper_bound_dt :
+        print("\nGathering profiles from this date/time: " + datetime.strftime(cur_dt, '%Y%m%d %H UTC'))
+        #dist, point = getARMProfiles(model_data_path, , datetime.strftime(cur_dt,'%H'),aeri_lon, aeri_lat, )
+        dist, point = getNCEIProfiles(datetime.strftime(cur_dt, '%Y%m%d%H'), aeri_lat, aeri_lon, spatial_mesh_size)
+        if dist is not None:
+            paths.append(dist['path_to_data'])
+            dists[count] = dist
+            points[count] = point
+            dts[count] = cur_dt
+        cur_dt = cur_dt + delta
+        count = count + 1
+    
+    # Check to see if any data was able to be found on the server for the date/time specified.
+    if dts.all() is None:
+        print("The program was unable to find any model data for both the timeframe and data source specified in the VIP file.")
+        print("Perhaps you should try a different data source?")
+        print("Aborting the program...no file will be created.")
+        sys.exit()
+
+    # Create a string showing the paths to the data.
+    paths = ', '.join(paths)
+    
+    # Intialize the arrays to save the temp/wvmr/pressure data to the netCDF file.
+    temperature = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    wvmr = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    pressure = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    temperature_sigma = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    wvmr_sigma = np.zeros((len(dts[temporal_mesh_size:len(dts)-temporal_mesh_size]), len(height_grid)))
+    
+    output = {}
+    # Loop over the timeframe specified by the user (e.g. 00 to 23 UTC for 20030508).
+    for i in np.arange(temporal_mesh_size, len(dts) - temporal_mesh_size, 1):
+        index_range = np.arange(i - temporal_mesh_size, i+temporal_mesh_size+1, 1)
+   
+        # Try to save the interpolated temperature, water vapor mixing ratio, and pressure profiles
+        # to the array.
+        try:
+            temperature[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['temp'])
+            wvmr[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['wvmr'])
+            pressure[i-temporal_mesh_size,:] = np.interp(height_grid, points[i]['hght'], points[i]['pres'])
+        except Exception as e:
+            # If there's an issue with loading in the data for this time, then this exception will catch it.
+            # this will skip calculating the standard deviation too, because we won't need that.
+            print(e)
+            continue
+        
+        # Pull out the latitude and longitude point.
+        lat = points[i]['lat']
+        lon = points[i]['lon']
+        
+        temp_dist = []
+        wvmr_dist = []
+        # Loop over the temporal window we'll be using to calculate the standard deviation.
+        for j in index_range:
+            # Loop over the spatial distribution of profiles for time index j.
+            for k in range(len(dists[i]['temp'])):
+                # Interpolate the profiles and save to the array used in calculating the standard deviation.
+                temp_dist.append(np.interp(height_grid, dists[i]['hght'][k], dists[i]['temp'][k]))
+                wvmr_dist.append(np.interp(height_grid, dists[i]['hght'][k], dists[i]['wvmr'][k]))
+        # Calculate the standard deviation profiles for temperature and water vapor mixing ratio and save it.
+        temp_std = np.std(np.asarray(temp_dist), axis=0)
+        wvmr_std = np.std(np.asarray(wvmr_dist), axis=0)
+        temperature_sigma[i-temporal_mesh_size,:] = temp_std
+        wvmr_sigma[i-temporal_mesh_size,:] = wvmr_std
+     
+    # Save all of the information about the T/Q model data to a dictionary.
+    output['pressure'] = np.ma.masked_where(pressure == 0, pressure)
+    output['temperature'] = np.ma.masked_where(np.ma.getmask(output['pressure']), temperature)
+    output['wvmr'] = np.ma.masked_where(np.ma.getmask(output['pressure']), wvmr)
+    output['temperature_sigma'] = np.ma.masked_where(np.ma.getmask(output['pressure']), temperature_sigma)
+    output['wvmr_sigma'] = np.ma.masked_where(np.ma.getmask(output['pressure']), wvmr_sigma)
+    output['height'] = height_grid
+    output['paths_to_data'] = paths
+    output['gridpoint_lat'] = lat
+    output['gridpoint_lon'] = lon
+    output['data_type'] = np.ones(len(temperature))
+    output['dts'] = dts[temporal_mesh_size:len(dts)-temporal_mesh_size]
+    
+    return output
+    '''
 
 def makeFile(output):
     """
